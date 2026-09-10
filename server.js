@@ -197,7 +197,8 @@ async function generateAudio(text, targetLanguage) {
     return null;
   }
 
-  // Google TTS language codes need a region, e.g. "hi-IN" not just "hi"
+  // Google TTS language codes need a region, for exapmle 
+  "hi-IN" not just "hi"
   const languageCodeMap = {
     hi: 'hi-IN',
     pa: 'pa-IN',
