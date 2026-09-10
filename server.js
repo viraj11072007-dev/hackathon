@@ -7,19 +7,40 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
-const fetch = require('node-fetch');
+// FIX: Node 18+ has `fetch` built in globally, so we no longer require('node-fetch').
+// node-fetch v3 is ESM-only and will crash `require()` with ERR_REQUIRE_ESM.
+// If you're on Node <18, install node-fetch@2 and uncomment the line below instead:
+// const fetch = require('node-fetch');
 const Tesseract = require('tesseract.js');
 const fs = require('fs');
+const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// FIX: multer's `dest` option does NOT create the folder for you.
+// Without this, every upload fails with ENOENT the first time someone sends a photo.
+const UPLOAD_DIR = path.join(__dirname, 'uploads');
+if (!fs.existsSync(UPLOAD_DIR)) {
+  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+}
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 
-// Handles image uploads — files are temporarily saved to the "uploads/" folder
-const upload = multer({ dest: 'uploads/' });
+// FIX: added file-size limit and image-only filter so a huge or bogus upload
+// can't hang Tesseract or crash the process.
+const upload = multer({
+  dest: UPLOAD_DIR,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB max
+  fileFilter: (req, file, cb) => {
+    if (!file.mimetype.startsWith('image/')) {
+      return cb(new Error('Only image files are allowed'));
+    }
+    cb(null, true);
+  },
+});
 
 // Health check — visit this URL to confirm the backend is alive
 app.get('/', (req, res) => {
@@ -40,7 +61,10 @@ app.post('/process-lesson', upload.single('photo'), async (req, res) => {
     if (req.file) {
       console.log('Step 1: Running OCR on uploaded image...');
       englishText = await runOCR(req.file.path);
-      fs.unlink(req.file.path, () => {}); // clean up the temp file
+      // FIX: log cleanup failures instead of silently swallowing them
+      fs.unlink(req.file.path, (err) => {
+        if (err) console.warn('Failed to delete temp upload:', err);
+      });
     }
 
     if (!englishText || englishText.trim().length === 0) {
@@ -73,6 +97,16 @@ app.post('/process-lesson', upload.single('photo'), async (req, res) => {
     console.error('Pipeline error:', error);
     res.status(500).json({ error: 'Something went wrong processing the lesson.' });
   }
+});
+
+// FIX: Multer errors (e.g. file too large, wrong type) get thrown before your
+// route handler's try/catch can see them — without this they'd crash the
+// process or return an unhandled 500 with no useful message.
+app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError || err.message === 'Only image files are allowed') {
+    return res.status(400).json({ error: err.message });
+  }
+  next(err);
 });
 
 // =========================================================================
