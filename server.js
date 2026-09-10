@@ -18,7 +18,7 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// FIX: multer's `dest` option does NOT create the folder for you.
+// folder for uploaded images 
 // Without this, every upload fails with ENOENT the first time someone sends a photo.
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
 if (!fs.existsSync(UPLOAD_DIR)) {
@@ -29,7 +29,7 @@ if (!fs.existsSync(UPLOAD_DIR)) {
 app.use(cors());
 app.use(express.json());
 
-// FIX: added file-size limit and image-only filter so a huge or bogus upload
+// upload setting
 // can't hang Tesseract or crash the process.
 const upload = multer({
   dest: UPLOAD_DIR,
